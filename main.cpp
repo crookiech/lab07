@@ -92,10 +92,10 @@ void findDuplicates(const std::vector<fs::path>& directories, const std::vector<
     for (auto it1 = allFiles.begin(); it1 != allFiles.end(); ++it1) {
         for (auto it2 = std::next(it1); it2 != allFiles.end(); ++it2) {
             if (compareHashes(it1->second, it2->second)) { // если хэши файлов равны
-                std::string hashKey(reinterpret_cast<const char*>(allFiles[i].second.data()), allFiles[i].second.size() * sizeof(uint32_t)); // последовательность байтов из вектора хэшей
+                std::string hashKey(reinterpret_cast<const char*>(it1->second.data()), it1->second.size() * sizeof(uint32_t)); // последовательность байтов из вектора хэшей
                 // Добавление путей к дубликатам
-                duplicates[hashKey].insert(allFiles[i].first);
-                duplicates[hashKey].insert(allFiles[j].first);
+                duplicates[hashKey].insert(it1->first); // путь к файлу из первого итератора
+                duplicates[hashKey].insert(it2->first); // путь к файлу из второго итератора
             }
         }
     }
