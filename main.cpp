@@ -48,7 +48,6 @@ bool compareHashes(const std::vector<uint32_t>& hashes1, const std::vector<uint3
 }
 
 // Функция для обработки файла
-// void processFile(const fs::directory_entry& entry, const std::vector<fs::path>& exclusions, size_t minSize, const std::regex& maskRegex, size_t blockSize, std::vector<std::pair<fs::path, std::vector<uint32_t>>>& hashVector) {
 void processFile(const fs::directory_entry& entry, const std::vector<fs::path>& exclusions, size_t minSize, const std::regex& maskRegex, size_t blockSize, std::unordered_map<fs::path, std::vector<uint32_t>>& allFiles) {
     if (entry.is_regular_file()) { // является ли элемент обычным файлом
         if (std::find(exclusions.begin(), exclusions.end(), entry.path().parent_path()) != exclusions.end()) { // если родительская директория файла в списке исключений
@@ -62,7 +61,6 @@ void processFile(const fs::directory_entry& entry, const std::vector<fs::path>& 
         }
         auto hashes = readFile(entry.path(), blockSize); // вычисление хэшей файла
         allFiles[entry.path()] = hashes;
-        // allFiles.emplace_back(entry.path(), hashes); // добавление пары пути файла и его хэшей в вектор
     }
 }
 
@@ -70,7 +68,6 @@ void processFile(const fs::directory_entry& entry, const std::vector<fs::path>& 
 void findDuplicates(const std::vector<fs::path>& directories, const std::vector<fs::path>& exclusions, size_t blockSize, size_t minSize, std::regex& maskRegex, int scanLevel) {
     std::unordered_map<std::string, std::set<fs::path>> duplicates; // словарь для хранения путей к дубликатам по их хэшам
     std::unordered_map<fs::path, std::vector<uint32_t>> allFiles; // вектор пар для хранения путей к файлам и их хэшей
-    // std::vector<std::pair<fs::path, std::vector<uint32_t>>> hashVector; // вектор пар для хранения путей к файлам и их хэшей
     for (const auto& dir : directories) { // перебор директорий
         if (!fs::exists(dir) || !fs::is_directory(dir)) { // если директории не существует или не является директорий
             std::cerr << "Directory doesn't exist or isn't a directory: " << dir << std::endl;
@@ -79,12 +76,10 @@ void findDuplicates(const std::vector<fs::path>& directories, const std::vector<
         if (scanLevel == 0) { // только указанная директория без вложенных
             for (const auto& entry : fs::directory_iterator(dir)) { // итератор, который перебирает только файлы в указанной директории без рекурсии
                 processFile(entry, exclusions, minSize, maskRegex, blockSize, allFiles); // обработка файла
-                // processFile(entry, exclusions, minSize, maskRegex, blockSize, hashVector); // обработка файла
             }
         } else { // рекурсивное сканирование
             for (const auto& entry : fs::recursive_directory_iterator(dir)) { // итератор, который перебирает все файлы и поддиректории рекурсивно
                 processFile(entry, exclusions, minSize, maskRegex, blockSize, allFiles); // обработка файла
-                // processFile(entry, exclusions, minSize, maskRegex, blockSize, hashVector); // обработка файла
             }
         }
     }
@@ -99,16 +94,6 @@ void findDuplicates(const std::vector<fs::path>& directories, const std::vector<
             }
         }
     }
-    // for (size_t i = 0; i < hashVector.size(); ++i) {
-    //     for (size_t j = i + 1; j < hashVector.size(); ++j) {
-    //         if (compareHashes(hashVector[i].second, hashVector[j].second)) { // если хэши файлов равны
-    //             std::string hashKey(reinterpret_cast<const char*>(hashVector[i].second.data()), hashVector[i].second.size() * sizeof(uint32_t)); // последовательность байтов из вектора хэшей
-    //             // Добавление путей к дубликатам
-    //             duplicates[hashKey].insert(hashVector[i].first);
-    //             duplicates[hashKey].insert(hashVector[j].first);
-    //         }
-    //     }
-    // }
     // Вывод результатов
     for (const auto& pair : duplicates) {
         std::cout << "Duplicates:\n";
