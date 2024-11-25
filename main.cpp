@@ -1,9 +1,9 @@
 #include <iostream>
+#include <boost/crc.hpp> // библиотека для вычисления CRC32 (циклический избыточный код)
 #include <string>
 #include <vector>
 #include <filesystem>
-#include <boost/crc.hpp> // библиотека для вычисления CRC32 (циклический избыточный код)
-#include <unordered_map> // для хэш-таблиц
+#include <map> // для хэш-таблиц
 #include <algorithm>
 #include <fstream>
 #include <regex> // регулярные выражения для обработки строк
@@ -12,13 +12,19 @@
 namespace fs = std::filesystem;
 
 // Функция для вычисления CRC32
-uint32_t calculate_crc32(const std::string& data) {
+// boost::crc_32_type - тип, используемый для вычисления CRC32, является специальной реализацией класса CRC, оптимизированной для 32-битных CRC
+// process_bytes - метод класса boost::crc_32_type, который обрабатывает массив байтов для вычисления CRC
+// checksum - метод класса boost::crc_32_type, который возвращает вычисленный CRC (хэш)
+uint32_t calculateCRC32(const std::string& data) {
     boost::crc_32_type crc;
     crc.process_bytes(data.data(), data.size()); // обработка байтов строки
     return crc.checksum(); // хэш
 }
 
 // Функция для чтения файла и получения последовательности хэшей
+// std::filesystem::path - класс для работы с путями файловой системы, используемый для представления путей к файлам и директориям
+// std::regex - класс для работы с регулярными выражениями, используемый для фильтрации имен файлов по заданной маске
+// gcount - возвращает количество прочитанных байтов (std::ifstream)
 std::vector<uint32_t> readFile(const fs::path& filePath, size_t blockSize) {
     std::vector<uint32_t> hashSequence; // вектор последовательности хэшей
     std::ifstream file(filePath, std::ios::binary); // открытие файла в бинарном режиме
@@ -32,7 +38,7 @@ std::vector<uint32_t> readFile(const fs::path& filePath, size_t blockSize) {
         if (bytesRead < blockSize) { // если прочитано меньше байтов, чем размер блока
             buffer.resize(blockSize, '\0'); // дополнение буфера нулями до полного размера блока
         }
-        uint32_t hash = calculate_crc32(buffer); // вычисление CRC32-хэша блока
+        uint32_t hash = calculateCRC32(buffer); // вычисление CRC32-хэша блока
         hashSequence.push_back(hash); // добавление хэша в вектор хэшей
     }
     return hashSequence; // возвращение вектора хэшей после завершения чтения файла
@@ -48,7 +54,10 @@ bool compareHashes(const std::vector<uint32_t>& hashes1, const std::vector<uint3
 }
 
 // Функция для обработки файла
-void processFile(const fs::directory_entry& entry, const std::vector<fs::path>& exclusions, size_t minSize, const std::regex& maskRegex, size_t blockSize, std::unordered_map<fs::path, std::vector<uint32_t>>& allFiles) {
+// std::filesystem::directory_entry - класс, который представляет собой элемент каталога файловой системы, используется для работы с файлами и директориями, предоставляя информацию о них
+// is_regular_file - проверяет, является ли элемент обычным файлом (std::filesystem::directory_entry)
+// regex_match - проверяет, соответствует ли строка заданному регулярному выражению (std::regex)
+void processFile(const fs::directory_entry& entry, const std::vector<fs::path>& exclusions, size_t minSize, const std::regex& maskRegex, size_t blockSize, std::map<fs::path, std::vector<uint32_t>>& allFiles) {
     if (entry.is_regular_file()) { // является ли элемент обычным файлом
         if (std::find(exclusions.begin(), exclusions.end(), entry.path().parent_path()) != exclusions.end()) { // если родительская директория файла в списке исключений
             return;
@@ -66,8 +75,8 @@ void processFile(const fs::directory_entry& entry, const std::vector<fs::path>& 
 
 // Функция для поиска дубликатов
 void findDuplicates(const std::vector<fs::path>& directories, const std::vector<fs::path>& exclusions, size_t blockSize, size_t minSize, std::regex& maskRegex, int scanLevel) {
-    std::unordered_map<std::string, std::set<fs::path>> duplicates; // словарь для хранения путей к дубликатам по их хэшам
-    std::unordered_map<fs::path, std::vector<uint32_t>> allFiles; // вектор пар для хранения путей к файлам и их хэшей
+    std::map<std::string, std::set<fs::path>> duplicates; // словарь для хранения путей к дубликатам по их хэшам
+    std::map<fs::path, std::vector<uint32_t>> allFiles; // вектор пар для хранения путей к файлам и их хэшей
     for (const auto& dir : directories) { // перебор директорий
         if (!fs::exists(dir) || !fs::is_directory(dir)) { // если директории не существует или не является директорий
             std::cerr << "Directory doesn't exist or isn't a directory: " << dir << std::endl;
@@ -77,7 +86,7 @@ void findDuplicates(const std::vector<fs::path>& directories, const std::vector<
             for (const auto& entry : fs::directory_iterator(dir)) { // итератор, который перебирает только файлы в указанной директории без рекурсии
                 processFile(entry, exclusions, minSize, maskRegex, blockSize, allFiles); // обработка файла
             }
-        } else { // рекурсивное сканирование
+        } else { // сканирование с вложенными
             for (const auto& entry : fs::recursive_directory_iterator(dir)) { // итератор, который перебирает все файлы и поддиректории рекурсивно
                 processFile(entry, exclusions, minSize, maskRegex, blockSize, allFiles); // обработка файла
             }
@@ -95,20 +104,22 @@ void findDuplicates(const std::vector<fs::path>& directories, const std::vector<
         }
     }
     // Вывод результатов
-    for (const auto& pair : duplicates) {
+    for (const auto& duplicate : duplicates) {
         std::cout << "Duplicates:\n";
-        for (const auto& file : pair.second) {
+        for (const auto& file : duplicate.second) {
             std::cout << file << std::endl;
         }
     }
 }
 
+// std::regex_replace - заменяет все вхождения подстроки, соответствующей регулярному выражению, на другую строку
+// std::regex_constants::icase - указывает на то, что регулярное выражение должно игнорировать регистр
 int main() {
     std::vector<fs::path> directories;
     std::vector<fs::path> exclusions;
     size_t blockSize; // размер блока 
     size_t minSize = 1; // минимальный размер файла
-    int scanLevel = 1; // уровень сканирования (1 - рекурсивное)
+    int scanLevel; // уровень сканирования (1 - рекурсивное)
     int numDirs; // количество директорий для сканирования
     std::cout << "Enter the number of directories to scan: ";
     std::cin >> numDirs;
@@ -127,7 +138,7 @@ int main() {
         std::cin >> exclDir;
         exclusions.push_back(exclDir);
     }
-    std::cout << "Enter the scan level (0 - only the specified directory without nested ones, 1 - recursive): ";
+    std::cout << "Enter the scan level (0 - only the specified directory without nested ones, 1 - with attachments): ";
     std::cin >> scanLevel;
     std::string maskString; // маска имен файлов
     std::cout << "Enter a file name mask for comparison (for example, *.txt or file?.txt): ";
@@ -138,15 +149,9 @@ int main() {
     maskString = "^" + std::regex_replace(maskString, star_regex, ".*"); // замена "*" на ".*"
     maskString = std::regex_replace(maskString, question_regex, "."); // замена "?" на "."
     maskString += "$"; // добавление конца строки
-    std::cout << "Regular expression: " << maskString << std::endl;
     std::cout << "Enter the block size (recommended value is 4096): ";
     std::cin >> blockSize;
-    try {
-        std::regex maskRegex(maskString, std::regex_constants::icase); // Игнорируем регистр
-        findDuplicates(directories, exclusions, blockSize, minSize, maskRegex, scanLevel);
-    } catch (const std::regex_error& e) {
-        std::cerr << "Error in the regular expression: " << e.what() << '\n';
-        return 1;
-    }
+    std::regex maskRegex(maskString, std::regex_constants::icase); // игнорируем регистр
+    findDuplicates(directories, exclusions, blockSize, minSize, maskRegex, scanLevel);
     return 0;
 }
